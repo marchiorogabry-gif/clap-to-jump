@@ -3,7 +3,6 @@
 #include <thread>
 #include <atomic>
 
-// Android seulement : accès au micro via OpenSL ES
 #ifdef GEODE_IS_ANDROID
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
@@ -11,139 +10,97 @@
 
 using namespace geode::prelude;
 
-// ─── Variables globales ──────────────────────────────────────────
 static std::atomic<bool> g_shouldJump{false};
 static std::atomic<bool> g_micRunning{false};
-static std::thread       g_micThread;
+static std::thread g_micThread;
 
 #ifdef GEODE_IS_ANDROID
-
-// ─── Lecture du micro en arrière-plan ───────────────────────────
 void microphoneLoop() {
-    // Initialisation OpenSL ES
     SLObjectItf engineObj;
     SLEngineItf engine;
     slCreateEngine(&engineObj, 0, nullptr, 0, nullptr, nullptr);
     (*engineObj)->Realize(engineObj, SL_BOOLEAN_FALSE);
     (*engineObj)->GetInterface(engineObj, SL_IID_ENGINE, &engine);
 
-    // Configuration de l'enregistrement
-    SLDataLocator_IODevice micLocator = {
-        SL_DATALOCATOR_IODEVICE,
-        SL_IODEVICE_AUDIOINPUT,
-        SL_DEFAULTDEVICEID_AUDIOINPUT,
-        nullptr
-    };
+    SLDataLocator_IODevice micLocator = {SL_DATALOCATOR_IODEVICE, SL_IODEVICE_AUDIOINPUT, SL_DEFAULTDEVICEID_AUDIOINPUT, nullptr};
     SLDataSource audioSrc = {&micLocator, nullptr};
-
-    SLDataLocator_AndroidSimpleBufferQueue bufQueue = {
-        SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2
-    };
-    SLDataFormat_PCM format = {
-        SL_DATAFORMAT_PCM, 1,
-        SL_SAMPLINGRATE_16,
-        SL_PCMSAMPLEFORMAT_FIXED_16,
-        SL_PCMSAMPLEFORMAT_FIXED_16,
-        SL_SPEAKER_FRONT_CENTER,
-        SL_BYTEORDER_LITTLEENDIAN
-    };
+    SLDataLocator_AndroidSimpleBufferQueue bufQueue = {SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2};
+    SLDataFormat_PCM format = {SL_DATAFORMAT_PCM, 1, SL_SAMPLINGRATE_16, SL_PCMSAMPLEFORMAT_FIXED_16, SL_PCMSAMPLEFORMAT_FIXED_16, SL_SPEAKER_FRONT_CENTER, SL_BYTEORDER_LITTLEENDIAN};
     SLDataSink audioSnk = {&bufQueue, &format};
 
     const SLInterfaceID ids[] = {SL_IID_ANDROIDSIMPLEBUFFERQUEUE};
-    const SLboolean req[]     = {SL_BOOLEAN_TRUE};
+    const SLboolean req[] = {SL_BOOLEAN_TRUE};
 
     SLObjectItf recorderObj;
     SLRecordItf recorder;
     SLAndroidSimpleBufferQueueItf recBufQueue;
 
-    (*engine)->CreateAudioRecorder(engine, &recorderObj,
-                                   &audioSrc, &audioSnk, 1, ids, req);
+    (*engine)->CreateAudioRecorder(engine, &recorderObj, &audioSrc, &audioSnk, 1, ids, req);
     (*recorderObj)->Realize(recorderObj, SL_BOOLEAN_FALSE);
     (*recorderObj)->GetInterface(recorderObj, SL_IID_RECORD, &recorder);
-    (*recorderObj)->GetInterface(recorderObj,
-        SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &recBufQueue);
+    (*recorderObj)->GetInterface(recorderObj, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &recBufQueue);
 
     const int BUFFER_SIZE = 1024;
     int16_t buffer[BUFFER_SIZE];
-    (*recBufQueue)->Enqueue(recBufQueue, buffer,
-                            BUFFER_SIZE * sizeof(int16_t));
+    (*recBufQueue)->Enqueue(recBufQueue, buffer, BUFFER_SIZE * sizeof(int16_t));
     (*recorder)->SetRecordState(recorder, SL_RECORDSTATE_RECORDING);
-
-    float sensitivity = Mod::get()->getSettingValue<float>("sensitivity");
 
     while (g_micRunning) {
         SLAndroidSimpleBufferQueueState state;
         (*recBufQueue)->GetState(recBufQueue, &state);
-
         if (state.count == 0) {
-            // Calcul du volume RMS
             double sum = 0.0;
-            for (int i = 0; i < BUFFER_SIZE; i++) {
-                sum += (double)buffer[i] * buffer[i];
-            }
+            for (int i = 0; i < BUFFER_SIZE; i++) sum += (double)buffer[i] * buffer[i];
             double rms = sqrt(sum / BUFFER_SIZE) / 32768.0;
-
-            // Mise à jour de la sensibilité (peut changer en cours de jeu)
-            sensitivity = Mod::get()->getSettingValue<float>("sensitivity");
-
-            if (rms > sensitivity) {
-                g_shouldJump = true;
-            }
-
-            // Remet le buffer en attente
-            (*recBufQueue)->Enqueue(recBufQueue, buffer,
-                                    BUFFER_SIZE * sizeof(int16_t));
+            float sensitivity = Mod::get()->getSettingValue<double>("sensitivity");
+            if (rms > sensitivity) g_shouldJump = true;
+            (*recBufQueue)->Enqueue(recBufQueue, buffer, BUFFER_SIZE * sizeof(int16_t));
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Nettoyage
     (*recorder)->SetRecordState(recorder, SL_RECORDSTATE_STOPPED);
     (*recorderObj)->Destroy(recorderObj);
     (*engineObj)->Destroy(engineObj);
 }
 #endif
 
-// ─── Hook sur PlayLayer ──────────────────────────────────────────
 class $modify(PlayLayer) {
-
-    // Démarrage du niveau → on lance le micro
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects))
-            return false;
-
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
 #ifdef GEODE_IS_ANDROID
         g_micRunning = true;
         g_shouldJump = false;
-        g_micThread  = std::thread(microphoneLoop);
-        log::info("🎤 Micro démarré !");
+        g_micThread = std::thread(microphoneLoop);
 #endif
         return true;
     }
 
-    // Chaque frame → si bruit détecté, on fait sauter
     void update(float dt) {
         PlayLayer::update(dt);
-
 #ifdef GEODE_IS_ANDROID
         if (g_shouldJump.exchange(false)) {
-            // Simule un clic/appui pour faire sauter le personnage
-            this->pushButton(1, true);
-            // On relâche juste après (court délai géré à la prochaine frame)
-            this->scheduleOnce([this](float) {
-                this->releaseButton(1, true);
-            }, 0.05f, "release_jump");
+            auto* player = m_player1;
+            if (player) {
+                player->pushButton(PlayerButton::Jump);
+                this->scheduleOnce(schedule_selector(PlayLayer::releaseJump), 0.05f);
+            }
         }
 #endif
     }
 
-    // Fin du niveau → on arrête le micro
+    void releaseJump(float) {
+#ifdef GEODE_IS_ANDROID
+        if (m_player1) {
+            m_player1->releaseButton(PlayerButton::Jump);
+        }
+#endif
+    }
+
     void onQuit() {
 #ifdef GEODE_IS_ANDROID
         g_micRunning = false;
-        if (g_micThread.joinable())
-            g_micThread.join();
-        log::info("🎤 Micro arrêté.");
+        if (g_micThread.joinable()) g_micThread.join();
 #endif
         PlayLayer::onQuit();
     }
