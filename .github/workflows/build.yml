@@ -7,7 +7,36 @@ on:
 
 jobs:
   build:
-    uses: geode-sdk/build-geode-mod/.github/workflows/build.yml@main
-    with:
-      combine: true
-      targets: android64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+
+      - name: Setup Geode CLI
+        run: |
+          pip install geode-cli --break-system-packages || true
+          curl -L https://github.com/geode-sdk/cli/releases/latest/download/geode-cli-linux.zip -o cli.zip
+          unzip cli.zip
+          chmod +x geode
+          sudo mv geode /usr/local/bin/
+
+      - name: Install Geode SDK
+        run: |
+          geode sdk install --path $HOME/geode-sdk
+          geode sdk install-binaries -p android64
+
+      - name: Build mod
+        run: |
+          export GEODE_SDK=$HOME/geode-sdk
+          export ANDROID_NDK_ROOT=$ANDROID_NDK
+          geode build -p android64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clap-to-jump.geode
+          path: build-android64/*.geode
