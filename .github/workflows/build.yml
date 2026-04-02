@@ -31,7 +31,19 @@ jobs:
 
       - name: Install Geode SDK
         run: |
-          geode config setup --profile default --gd-path /tmp/fake-gd
+          mkdir -p $HOME/.config/geode
+          mkdir -p /tmp/fake-gd
+          cat > $HOME/.config/geode/config.json << 'EOF'
+          {
+            "profiles": [
+              {
+                "name": "default",
+                "gd-path": "/tmp/fake-gd"
+              }
+            ],
+            "default-profile": "default"
+          }
+          EOF
           geode sdk install $HOME/geode-sdk
           geode sdk install-binaries --platform android64
 
