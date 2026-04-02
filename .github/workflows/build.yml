@@ -16,27 +16,24 @@ jobs:
         with:
           ndk-version: r27c
 
-      - name: Setup Geode CLI
+      - name: Setup Geode SDK
         run: |
-          pip install geode-cli --break-system-packages || true
           curl -L https://github.com/geode-sdk/cli/releases/latest/download/geode-cli-linux.zip -o cli.zip
           unzip cli.zip
           chmod +x geode
           sudo mv geode /usr/local/bin/
-
-      - name: Install Geode SDK
-        run: |
           geode sdk install --path $HOME/geode-sdk
-          geode sdk install-binaries -p android64
+          geode sdk install-binaries --platform android64
 
       - name: Build mod
         run: |
           export GEODE_SDK=$HOME/geode-sdk
           export ANDROID_NDK_ROOT=$ANDROID_NDK
-          geode build -p android64
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-23
+          cmake --build build --config RelWithDebInfo
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: clap-to-jump.geode
-          path: build-android64/*.geode
+          name: clap-to-jump
+          path: build/*.geode
