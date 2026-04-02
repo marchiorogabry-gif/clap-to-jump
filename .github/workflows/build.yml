@@ -16,11 +16,12 @@ jobs:
         with:
           ndk-version: r27c
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Geode CLI
-        run: cargo install geode-cli
+      - name: Setup Geode CLI
+        run: |
+          curl -Lo geode https://github.com/geode-sdk/cli/releases/download/v3.7.0/geode-cli-linux
+          chmod +x geode
+          sudo mv geode /usr/local/bin/geode
+          geode --version
 
       - name: Install Geode SDK
         run: |
