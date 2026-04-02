@@ -18,7 +18,13 @@ jobs:
 
       - name: Setup Geode CLI
         run: |
-          curl -Lo geode https://github.com/geode-sdk/cli/releases/download/v3.7.0/geode-cli-linux
+          ASSET_URL=$(curl -s https://api.github.com/repos/geode-sdk/cli/releases/latest \
+            | grep "browser_download_url" \
+            | grep "linux" \
+            | grep -v ".zip" \
+            | cut -d '"' -f 4)
+          echo "Downloading: $ASSET_URL"
+          curl -Lo geode "$ASSET_URL"
           chmod +x geode
           sudo mv geode /usr/local/bin/geode
           geode --version
