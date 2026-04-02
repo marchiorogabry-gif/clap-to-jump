@@ -11,54 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-
-      - name: Setup Geode CLI
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download v3.7.0 \
-            --repo geode-sdk/cli \
-            --pattern "geode-cli-v3.7.0-linux.zip" \
-            --output geode-cli.zip
-          unzip geode-cli.zip -d geode-cli-folder
-          chmod +x geode-cli-folder/geode
-          sudo mv geode-cli-folder/geode /usr/local/bin/geode
-          geode --version
-
-      - name: Install Geode SDK
-        run: |
-          mkdir -p /tmp/fake-gd
-          mkdir -p $HOME/.local/share/geode
-          cat > $HOME/.local/share/geode/config.json << 'EOF'
-          {
-            "profiles": [
-              {
-                "name": "default",
-                "gd-path": "/tmp/fake-gd"
-              }
-            ],
-            "default-profile": "default"
-          }
-          EOF
-          geode sdk install $HOME/geode-sdk
-          geode sdk install-binaries --platform android64
-
       - name: Build mod
-        run: |
-          export GEODE_SDK=$HOME/geode-sdk
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-23
-          cmake --build build --config RelWithDebInfo
+        uses: geode-sdk/build-geode-mod@main
+        id: build
+        with:
+          target: Android64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: clap-to-jump
-          path: build/*.geode
+          path: ${{ steps.build.outputs.build-output }}
