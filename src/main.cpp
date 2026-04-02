@@ -66,6 +66,11 @@ void microphoneLoop() {
 #endif
 
 class $modify(PlayLayer) {
+    struct Fields {
+        float m_releaseTimer = 0.f;
+        bool m_shouldRelease = false;
+    };
+
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
 #ifdef GEODE_IS_ANDROID
@@ -82,10 +87,17 @@ class $modify(PlayLayer) {
         if (g_shouldJump.exchange(false)) {
             if (m_player1) {
                 m_player1->pushButton(PlayerButton::Jump);
-                auto player = m_player1;
-                this->scheduleOnce([player](float) {
-                    player->releaseButton(PlayerButton::Jump);
-                }, 0.05f, "release_jump");
+                m_fields->m_shouldRelease = true;
+                m_fields->m_releaseTimer = 0.05f;
+            }
+        }
+        if (m_fields->m_shouldRelease) {
+            m_fields->m_releaseTimer -= dt;
+            if (m_fields->m_releaseTimer <= 0.f) {
+                m_fields->m_shouldRelease = false;
+                if (m_player1) {
+                    m_player1->releaseButton(PlayerButton::Jump);
+                }
             }
         }
 #endif
