@@ -1,4 +1,4 @@
-name: Build Geode Mod
+name: Build Mod
 
 on:
   push:
@@ -6,12 +6,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Geode SDK
+      - name: Build mod
         uses: geode-sdk/build-geode-mod@main
         with:
-          target: android64
+          platform: android64
