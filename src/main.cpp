@@ -16,11 +16,17 @@ static std::thread g_micThread;
 
 #ifdef GEODE_IS_ANDROID
 void microphoneLoop() {
-    SLObjectItf engineObj;
-    SLEngineItf engine;
-    slCreateEngine(&engineObj, 0, nullptr, 0, nullptr, nullptr);
-    (*engineObj)->Realize(engineObj, SL_BOOLEAN_FALSE);
-    (*engineObj)->GetInterface(engineObj, SL_IID_ENGINE, &engine);
+    SLObjectItf engineObj = nullptr;
+    SLEngineItf engine = nullptr;
+
+    SLresult result = slCreateEngine(&engineObj, 0, nullptr, 0, nullptr, nullptr);
+    if (result != SL_RESULT_SUCCESS || !engineObj) return;
+
+    result = (*engineObj)->Realize(engineObj, SL_BOOLEAN_FALSE);
+    if (result != SL_RESULT_SUCCESS) { (*engineObj)->Destroy(engineObj); return; }
+
+    result = (*engineObj)->GetInterface(engineObj, SL_IID_ENGINE, &engine);
+    if (result != SL_RESULT_SUCCESS) { (*engineObj)->Destroy(engineObj); return; }
 
     SLDataLocator_IODevice micLocator = {SL_DATALOCATOR_IODEVICE, SL_IODEVICE_AUDIOINPUT, SL_DEFAULTDEVICEID_AUDIOINPUT, nullptr};
     SLDataSource audioSrc = {&micLocator, nullptr};
@@ -31,17 +37,24 @@ void microphoneLoop() {
     const SLInterfaceID ids[] = {SL_IID_ANDROIDSIMPLEBUFFERQUEUE};
     const SLboolean req[] = {SL_BOOLEAN_TRUE};
 
-    SLObjectItf recorderObj;
-    SLRecordItf recorder;
-    SLAndroidSimpleBufferQueueItf recBufQueue;
+    SLObjectItf recorderObj = nullptr;
+    result = (*engine)->CreateAudioRecorder(engine, &recorderObj, &audioSrc, &audioSnk, 1, ids, req);
+    if (result != SL_RESULT_SUCCESS || !recorderObj) { (*engineObj)->Destroy(engineObj); return; }
 
-    (*engine)->CreateAudioRecorder(engine, &recorderObj, &audioSrc, &audioSnk, 1, ids, req);
-    (*recorderObj)->Realize(recorderObj, SL_BOOLEAN_FALSE);
-    (*recorderObj)->GetInterface(recorderObj, SL_IID_RECORD, &recorder);
-    (*recorderObj)->GetInterface(recorderObj, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &recBufQueue);
+    result = (*recorderObj)->Realize(recorderObj, SL_BOOLEAN_FALSE);
+    if (result != SL_RESULT_SUCCESS) { (*recorderObj)->Destroy(recorderObj); (*engineObj)->Destroy(engineObj); return; }
+
+    SLRecordItf recorder = nullptr;
+    result = (*recorderObj)->GetInterface(recorderObj, SL_IID_RECORD, &recorder);
+    if (result != SL_RESULT_SUCCESS) { (*recorderObj)->Destroy(recorderObj); (*engineObj)->Destroy(engineObj); return; }
+
+    SLAndroidSimpleBufferQueueItf recBufQueue = nullptr;
+    result = (*recorderObj)->GetInterface(recorderObj, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &recBufQueue);
+    if (result != SL_RESULT_SUCCESS) { (*recorderObj)->Destroy(recorderObj); (*engineObj)->Destroy(engineObj); return; }
 
     const int BUFFER_SIZE = 1024;
-    int16_t buffer[BUFFER_SIZE];
+    int16_t buffer[BUFFER_SIZE] = {0};
+
     (*recBufQueue)->Enqueue(recBufQueue, buffer, BUFFER_SIZE * sizeof(int16_t));
     (*recorder)->SetRecordState(recorder, SL_RECORDSTATE_RECORDING);
 
@@ -76,6 +89,7 @@ class $modify(PlayLayer) {
 #ifdef GEODE_IS_ANDROID
         g_micRunning = true;
         g_shouldJump = false;
+        if (g_micThread.joinable()) g_micThread.join();
         g_micThread = std::thread(microphoneLoop);
 #endif
         return true;
@@ -95,9 +109,7 @@ class $modify(PlayLayer) {
             m_fields->m_releaseTimer -= dt;
             if (m_fields->m_releaseTimer <= 0.f) {
                 m_fields->m_shouldRelease = false;
-                if (m_player1) {
-                    m_player1->releaseButton(PlayerButton::Jump);
-                }
+                if (m_player1) m_player1->releaseButton(PlayerButton::Jump);
             }
         }
 #endif
