@@ -31,7 +31,7 @@ jobs:
 
       - name: Install Geode SDK
         run: |
-          geode sdk install --path $HOME/geode-sdk
+          geode sdk install $HOME/geode-sdk
           geode sdk install-binaries --platform android64
 
       - name: Build mod
