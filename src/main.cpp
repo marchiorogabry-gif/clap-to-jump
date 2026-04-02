@@ -2,10 +2,10 @@
 #include <Geode/modify/PlayLayer.hpp>
 #include <thread>
 #include <atomic>
+#include <cmath>
 
 #ifdef GEODE_IS_ANDROID
-#include <SLES/OpenSLES.h>
-#include <SLES/OpenSLES_Android.h>
+#include <aaudio/AAudio.h>
 #endif
 
 using namespace geode::prelude;
@@ -16,65 +16,44 @@ static std::thread g_micThread;
 
 #ifdef GEODE_IS_ANDROID
 void microphoneLoop() {
-    SLObjectItf engineObj = nullptr;
-    SLEngineItf engine = nullptr;
+    AAudioStreamBuilder* builder = nullptr;
+    if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK) return;
 
-    SLresult result = slCreateEngine(&engineObj, 0, nullptr, 0, nullptr, nullptr);
-    if (result != SL_RESULT_SUCCESS || !engineObj) return;
+    AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_INPUT);
+    AAudioStreamBuilder_setSampleRate(builder, 16000);
+    AAudioStreamBuilder_setChannelCount(builder, 1);
+    AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
+    AAudioStreamBuilder_setInputPreset(builder, AAUDIO_INPUT_PRESET_GENERIC);
 
-    result = (*engineObj)->Realize(engineObj, SL_BOOLEAN_FALSE);
-    if (result != SL_RESULT_SUCCESS) { (*engineObj)->Destroy(engineObj); return; }
-
-    result = (*engineObj)->GetInterface(engineObj, SL_IID_ENGINE, &engine);
-    if (result != SL_RESULT_SUCCESS) { (*engineObj)->Destroy(engineObj); return; }
-
-    SLDataLocator_IODevice micLocator = {SL_DATALOCATOR_IODEVICE, SL_IODEVICE_AUDIOINPUT, SL_DEFAULTDEVICEID_AUDIOINPUT, nullptr};
-    SLDataSource audioSrc = {&micLocator, nullptr};
-    SLDataLocator_AndroidSimpleBufferQueue bufQueue = {SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2};
-    SLDataFormat_PCM format = {SL_DATAFORMAT_PCM, 1, SL_SAMPLINGRATE_16, SL_PCMSAMPLEFORMAT_FIXED_16, SL_PCMSAMPLEFORMAT_FIXED_16, SL_SPEAKER_FRONT_CENTER, SL_BYTEORDER_LITTLEENDIAN};
-    SLDataSink audioSnk = {&bufQueue, &format};
-
-    const SLInterfaceID ids[] = {SL_IID_ANDROIDSIMPLEBUFFERQUEUE};
-    const SLboolean req[] = {SL_BOOLEAN_TRUE};
-
-    SLObjectItf recorderObj = nullptr;
-    result = (*engine)->CreateAudioRecorder(engine, &recorderObj, &audioSrc, &audioSnk, 1, ids, req);
-    if (result != SL_RESULT_SUCCESS || !recorderObj) { (*engineObj)->Destroy(engineObj); return; }
-
-    result = (*recorderObj)->Realize(recorderObj, SL_BOOLEAN_FALSE);
-    if (result != SL_RESULT_SUCCESS) { (*recorderObj)->Destroy(recorderObj); (*engineObj)->Destroy(engineObj); return; }
-
-    SLRecordItf recorder = nullptr;
-    result = (*recorderObj)->GetInterface(recorderObj, SL_IID_RECORD, &recorder);
-    if (result != SL_RESULT_SUCCESS) { (*recorderObj)->Destroy(recorderObj); (*engineObj)->Destroy(engineObj); return; }
-
-    SLAndroidSimpleBufferQueueItf recBufQueue = nullptr;
-    result = (*recorderObj)->GetInterface(recorderObj, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &recBufQueue);
-    if (result != SL_RESULT_SUCCESS) { (*recorderObj)->Destroy(recorderObj); (*engineObj)->Destroy(engineObj); return; }
-
-    const int BUFFER_SIZE = 1024;
-    int16_t buffer[BUFFER_SIZE] = {0};
-
-    (*recBufQueue)->Enqueue(recBufQueue, buffer, BUFFER_SIZE * sizeof(int16_t));
-    (*recorder)->SetRecordState(recorder, SL_RECORDSTATE_RECORDING);
-
-    while (g_micRunning) {
-        SLAndroidSimpleBufferQueueState state;
-        (*recBufQueue)->GetState(recBufQueue, &state);
-        if (state.count == 0) {
-            double sum = 0.0;
-            for (int i = 0; i < BUFFER_SIZE; i++) sum += (double)buffer[i] * buffer[i];
-            double rms = sqrt(sum / BUFFER_SIZE) / 32768.0;
-            float sensitivity = Mod::get()->getSettingValue<double>("sensitivity");
-            if (rms > sensitivity) g_shouldJump = true;
-            (*recBufQueue)->Enqueue(recBufQueue, buffer, BUFFER_SIZE * sizeof(int16_t));
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    AAudioStream* stream = nullptr;
+    if (AAudioStreamBuilder_openStream(builder, &stream) != AAUDIO_OK) {
+        AAudioStreamBuilder_delete(builder);
+        return;
     }
 
-    (*recorder)->SetRecordState(recorder, SL_RECORDSTATE_STOPPED);
-    (*recorderObj)->Destroy(recorderObj);
-    (*engineObj)->Destroy(engineObj);
+    AAudioStreamBuilder_delete(builder);
+
+    if (AAudioStream_requestStart(stream) != AAUDIO_OK) {
+        AAudioStream_close(stream);
+        return;
+    }
+
+    const int BUFFER_SIZE = 1024;
+    int16_t buffer[BUFFER_SIZE];
+
+    while (g_micRunning) {
+        int32_t framesRead = AAudioStream_read(stream, buffer, BUFFER_SIZE, 10000000);
+        if (framesRead > 0) {
+            double sum = 0.0;
+            for (int i = 0; i < framesRead; i++) sum += (double)buffer[i] * buffer[i];
+            double rms = sqrt(sum / framesRead) / 32768.0;
+            float sensitivity = Mod::get()->getSettingValue<double>("sensitivity");
+            if (rms > sensitivity) g_shouldJump = true;
+        }
+    }
+
+    AAudioStream_requestStop(stream);
+    AAudioStream_close(stream);
 }
 #endif
 
