@@ -31,9 +31,9 @@ jobs:
 
       - name: Install Geode SDK
         run: |
-          mkdir -p $HOME/.config/geode
           mkdir -p /tmp/fake-gd
-          cat > $HOME/.config/geode/config.json << 'EOF'
+          mkdir -p $HOME/.local/share/geode
+          cat > $HOME/.local/share/geode/config.json << 'EOF'
           {
             "profiles": [
               {
