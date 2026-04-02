@@ -18,10 +18,9 @@ jobs:
 
       - name: Setup Geode CLI
         run: |
-          curl -L https://github.com/geode-sdk/cli/releases/download/v3.7.0/geode-cli-linux.zip -o cli.zip
-          unzip cli.zip -d cli_folder
-          chmod +x cli_folder/geode
-          sudo mv cli_folder/geode /usr/local/bin/geode
+          curl -L https://github.com/geode-sdk/cli/releases/download/v3.7.0/geode -o geode
+          chmod +x geode
+          sudo mv geode /usr/local/bin/geode
 
       - name: Install Geode SDK
         run: |
