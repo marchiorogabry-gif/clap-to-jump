@@ -80,19 +80,13 @@ class $modify(PlayLayer) {
         PlayLayer::update(dt);
 #ifdef GEODE_IS_ANDROID
         if (g_shouldJump.exchange(false)) {
-            auto* player = m_player1;
-            if (player) {
-                player->pushButton(PlayerButton::Jump);
-                this->scheduleOnce(schedule_selector(PlayLayer::releaseJump), 0.05f);
+            if (m_player1) {
+                m_player1->pushButton(PlayerButton::Jump);
+                auto player = m_player1;
+                this->scheduleOnce([player](float) {
+                    player->releaseButton(PlayerButton::Jump);
+                }, 0.05f, "release_jump");
             }
-        }
-#endif
-    }
-
-    void releaseJump(float) {
-#ifdef GEODE_IS_ANDROID
-        if (m_player1) {
-            m_player1->releaseButton(PlayerButton::Jump);
         }
 #endif
     }
