@@ -17,16 +17,15 @@ jobs:
           ndk-version: r27c
 
       - name: Setup Geode CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          ASSET_URL=$(curl -s https://api.github.com/repos/geode-sdk/cli/releases/latest \
-            | grep "browser_download_url" \
-            | grep "linux" \
-            | grep -v ".zip" \
-            | cut -d '"' -f 4)
-          echo "Downloading: $ASSET_URL"
-          curl -Lo geode "$ASSET_URL"
-          chmod +x geode
-          sudo mv geode /usr/local/bin/geode
+          gh release download v3.7.0 \
+            --repo geode-sdk/cli \
+            --pattern "*linux*" \
+            --output geode-cli
+          chmod +x geode-cli
+          sudo mv geode-cli /usr/local/bin/geode
           geode --version
 
       - name: Install Geode SDK
