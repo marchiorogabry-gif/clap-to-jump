@@ -23,7 +23,6 @@ void microphoneLoop() {
     AAudioStreamBuilder_setSampleRate(builder, 16000);
     AAudioStreamBuilder_setChannelCount(builder, 1);
     AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
-    AAudioStreamBuilder_setInputPreset(builder, AAUDIO_INPUT_PRESET_GENERIC);
 
     AAudioStream* stream = nullptr;
     if (AAudioStreamBuilder_openStream(builder, &stream) != AAUDIO_OK) {
