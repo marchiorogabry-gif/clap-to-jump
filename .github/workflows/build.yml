@@ -16,6 +16,7 @@ jobs:
         id: build
         with:
           target: Android64
+          configure-args: -DANDROID_PLATFORM=android-26
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
