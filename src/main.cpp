@@ -17,7 +17,10 @@ static std::thread g_micThread;
 #ifdef GEODE_IS_ANDROID
 void microphoneLoop() {
     AAudioStreamBuilder* builder = nullptr;
-    if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK) return;
+    if (AAudio_createStreamBuilder(&builder) != AAUDIO_OK) {
+        log::error("AAudio: failed to create builder");
+        return;
+    }
 
     AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_INPUT);
     AAudioStreamBuilder_setSampleRate(builder, 16000);
@@ -25,20 +28,26 @@ void microphoneLoop() {
     AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
 
     AAudioStream* stream = nullptr;
-    if (AAudioStreamBuilder_openStream(builder, &stream) != AAUDIO_OK) {
-        AAudioStreamBuilder_delete(builder);
+    aaudio_result_t result = AAudioStreamBuilder_openStream(builder, &stream);
+    AAudioStreamBuilder_delete(builder);
+
+    if (result != AAUDIO_OK) {
+        log::error("AAudio: failed to open stream: {}", AAudio_convertResultToText(result));
         return;
     }
 
-    AAudioStreamBuilder_delete(builder);
-
-    if (AAudioStream_requestStart(stream) != AAUDIO_OK) {
+    result = AAudioStream_requestStart(stream);
+    if (result != AAUDIO_OK) {
+        log::error("AAudio: failed to start stream: {}", AAudio_convertResultToText(result));
         AAudioStream_close(stream);
         return;
     }
 
+    log::info("AAudio: mic started successfully!");
+
     const int BUFFER_SIZE = 1024;
     int16_t buffer[BUFFER_SIZE];
+    int logCounter = 0;
 
     while (g_micRunning) {
         int32_t framesRead = AAudioStream_read(stream, buffer, BUFFER_SIZE, 10000000);
@@ -46,13 +55,27 @@ void microphoneLoop() {
             double sum = 0.0;
             for (int i = 0; i < framesRead; i++) sum += (double)buffer[i] * buffer[i];
             double rms = sqrt(sum / framesRead) / 32768.0;
+
+            // Log le volume toutes les 50 lectures
+            logCounter++;
+            if (logCounter >= 50) {
+                log::info("Mic RMS: {:.4f}", rms);
+                logCounter = 0;
+            }
+
             float sensitivity = Mod::get()->getSettingValue<double>("sensitivity");
-            if (rms > sensitivity) g_shouldJump = true;
+            if (rms > sensitivity) {
+                log::info("JUMP triggered! RMS: {:.4f} > sensitivity: {:.4f}", rms, sensitivity);
+                g_shouldJump = true;
+            }
+        } else {
+            log::warn("AAudio: framesRead = {}", framesRead);
         }
     }
 
     AAudioStream_requestStop(stream);
     AAudioStream_close(stream);
+    log::info("AAudio: mic stopped.");
 }
 #endif
 
@@ -69,6 +92,7 @@ class $modify(PlayLayer) {
         g_shouldJump = false;
         if (g_micThread.joinable()) g_micThread.join();
         g_micThread = std::thread(microphoneLoop);
+        log::info("Clap to Jump: mic thread started");
 #endif
         return true;
     }
@@ -97,6 +121,7 @@ class $modify(PlayLayer) {
 #ifdef GEODE_IS_ANDROID
         g_micRunning = false;
         if (g_micThread.joinable()) g_micThread.join();
+        log::info("Clap to Jump: mic thread stopped");
 #endif
         PlayLayer::onQuit();
     }
