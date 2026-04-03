@@ -16,4 +16,6 @@ add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
 target_link_libraries(${PROJECT_NAME} geode-sdk aaudio)
 
+target_compile_options(${PROJECT_NAME} PRIVATE -D__ANDROID_MIN_SDK_VERSION__=26)
+
 setup_geode_mod(${PROJECT_NAME})
